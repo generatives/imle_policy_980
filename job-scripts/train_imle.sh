@@ -11,6 +11,6 @@
 
 module load StdEnv/2023 python/3.11.5 scipy-stack cuda
 source ~/py-311/bin/activate
-export WANDB_API_KEY="863937219a6baaf8baba21ad53db86e3ff031d8a"
+export WANDB_API_KEY=""
 cd ~/projects/aip-keli/hsd31/imle_policy_980
 python -m torch.distributed.run --nproc_per_node=2 imle_policy/train.py --task zarr --method rs_imle
