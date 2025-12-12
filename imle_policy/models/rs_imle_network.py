@@ -351,14 +351,22 @@ class GeneratorConditionalTransformer(nn.Module):
                  num_heads=8,
                  num_layers=6,
                  ff_dim=2048,
-                 dropout=0.1):
+                 dropout=0.1,
+                 horizon=1,
+                 use_time_embedding=True):
         
         super().__init__()
         self.input_dim = input_dim
         self.embed_dim = embed_dim
+        self.horizon = horizon
         
         self.input_embedding = nn.Linear(input_dim, embed_dim)
         self.positional_encoding = nn.Parameter(torch.zeros(1, 100, embed_dim))
+        
+        if use_time_embedding:
+            self.time_embedding = SinusoidalPosEmb(embed_dim)
+            
+        self.global_cond_proj = nn.Linear(global_cond_dim, embed_dim)
         
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=embed_dim,
@@ -372,10 +380,22 @@ class GeneratorConditionalTransformer(nn.Module):
             num_layers=num_layers
         )
         
-        self.global_cond_proj = nn.Linear(global_cond_dim, embed_dim)
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=embed_dim,
+            nhead=num_heads,
+            dim_feedforward=ff_dim,
+            dropout=dropout,
+        )
+        
+        self.transformer_decoder = nn.TransformerDecoder(
+            decoder_layer,
+            num_layers=num_layers
+        )
+        
+        
         self.output_layer = nn.Linear(embed_dim, output_dim)
         
-    def forward(self, x, global_cond):
+    def forward(self, x, global_cond, timesteps=None):
         batch_size = x.size(0)
         
         x = self.input_embedding(x)
@@ -384,10 +404,24 @@ class GeneratorConditionalTransformer(nn.Module):
         seq_len = x.size(1)
         x = x + self.positional_encoding[:, :seq_len, :]
         
-        global_cond = global_cond.view(batch_size, -1)
+        if self.time_embedding and timesteps is not None:
+            time_embed = self.time_embedding(timesteps)
+            x = x + time_embed.unsqueeze(1)
+        
+        #global_cond = global_cond.view(batch_size, -1)
         global_cond = self.global_cond_proj(global_cond)
         global_cond = global_cond.unsqueeze(1)
-        x = x + global_cond
+        cond_encoded = self.transformer_encoder(global_cond)
+        
+        if seq_len > 1:
+            causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device) == 1)
+            causal_mask = causal_mask.float().masked_fill(causal_mask == 0, float('-inf')).masked_fill(causal_mask == 1, float(0.0))
+        else:
+            causal_mask = None
+        
+        x = self.transformer_decoder(x, memory=cond_encoded, tgt_mask=causal_mask)
+        
+        #x = x + global_cond
         
         x = x.transpose(0, 1)
         x = self.transformer_encoder(x)
