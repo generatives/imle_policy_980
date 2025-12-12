@@ -21,7 +21,8 @@ import time
 # Add the parent directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from imle_policy.models.rs_imle_network import GeneratorConditionalUnet1D
+#from imle_policy.models.rs_imle_network import GeneratorConditionalUnet1D
+from imle_policy.models.rs_imle_network import GeneratorConditionalTransformer
 from imle_policy.models.diffusion_network import ConditionalUnet1D
 from imle_policy.models.vision_network import get_resnet, replace_bn_with_gn
 from imle_policy.utils.losses import rs_imle_loss
@@ -36,7 +37,7 @@ def parse_args():
                       help='Training method (rs_imle, diffusion, flow_matching)')
     parser.add_argument('--epsilon', type=float, default=0.03,
                       help='IMLE epsilon parameter')
-    parser.add_argument('--n_samples_per_condition', type=int, default=3,
+    parser.add_argument('--n_samples_per_condition', type=int, default=20,
                       help='Number of samples per condition')
     parser.add_argument('--dataset_percentage', type=float, default=1.0,
                       help='Percentage of dataset to use')
@@ -115,7 +116,9 @@ def create_networks(args_dict):
     if args_dict['method'] == 'diffusion':
         policy_net = ConditionalUnet1D(
             input_dim=args_dict['action_dim'],
-            global_cond_dim=args_dict['obs_dim']*args_dict['obs_horizon'])
+            global_cond_dim=args_dict['noise_dim']
+            #global_cond_dim=args_dict['obs_dim']*args_dict['obs_horizon']
+            )
         
         noise_scheduler = DDPMScheduler(
             num_train_timesteps=args_dict['num_diffusion_iters'],
@@ -124,9 +127,13 @@ def create_networks(args_dict):
             prediction_type='epsilon')
         
     elif args_dict['method'] == 'rs_imle':
-        policy_net = GeneratorConditionalUnet1D(
-            input_dim=args_dict['action_dim'],
-            global_cond_dim=args_dict['obs_dim']*args_dict['obs_horizon'])
+        policy_net = GeneratorConditionalTransformer(
+            #input_dim=args_dict['action_dim'],
+            input_dim=360,
+            global_cond_dim=12,
+            output_dim=12
+            #global_cond_dim=args_dict['obs_dim']*args_dict['obs_horizon']
+            )
         
     elif args_dict['method'] == 'flow_matching':
         policy_net = ConditionalUnet1D(
@@ -231,13 +238,17 @@ def train_diffusion_step(nets, noise_scheduler, obs_cond, naction, B, device):
     return nn.functional.mse_loss(noise_pred, noise)
 
 def train_rs_imle_step(nets, obs_cond, naction, B, args_dict, device):
-    noise = torch.randn(B * args_dict['n_samples_per_condition'], *naction.shape[1:], device=device)
+    #noise = torch.randn(B * args_dict['n_samples_per_condition'], *naction.shape[1:], device=device)
+    noise = torch.randn(B * args_dict['n_samples_per_condition'], 12, device=device)
+
     repeated_obs_cond = obs_cond.repeat_interleave(args_dict['n_samples_per_condition'], dim=0)
     
     pred_actions = nets['policy_net'](repeated_obs_cond, noise)
-
     
-    pred_actions = pred_actions.reshape(B, args_dict['n_samples_per_condition'], *naction.shape[1:])
+    
+    #pred_actions = pred_actions.reshape(B, args_dict['n_samples_per_condition'], *naction.shape[1:])
+    
+    pred_actions = pred_actions.reshape(B, args_dict['n_samples_per_condition'], 12)
 
     
     
