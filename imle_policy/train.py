@@ -39,7 +39,7 @@ def parse_args():
                       help='IMLE epsilon parameter')
     parser.add_argument('--n_samples_per_condition', type=int, default=20,
                       help='Number of samples per condition')
-    parser.add_argument('--dataset_percentage', type=float, default=1.0,
+    parser.add_argument('--dataset_percentage', type=float, default=0.1,
                       help='Percentage of dataset to use')
     parser.add_argument('--task', type=str, default='pusht',
                       help='Task to train on (pusht, Lift, PickPlaceCan, etc.)')
@@ -131,7 +131,7 @@ def create_networks(args_dict):
             #input_dim=args_dict['action_dim'],
             input_dim=360,
             global_cond_dim=12,
-            output_dim=12
+            output_dim=96
             #global_cond_dim=args_dict['obs_dim']*args_dict['obs_horizon']
             )
         
@@ -248,7 +248,7 @@ def train_rs_imle_step(nets, obs_cond, naction, B, args_dict, device):
     
     #pred_actions = pred_actions.reshape(B, args_dict['n_samples_per_condition'], *naction.shape[1:])
     
-    pred_actions = pred_actions.reshape(B, args_dict['n_samples_per_condition'], 12)
+    pred_actions = pred_actions.reshape(B, args_dict['n_samples_per_condition'], 96)
 
     
     
