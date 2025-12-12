@@ -20,7 +20,7 @@ def evaluate(args_dict, nets, stats, method):
         pred_horizon=args_dict['pred_horizon'],
         obs_horizon=args_dict['obs_horizon'],
         action_horizon=args_dict['action_horizon'],
-        dataset_percentage=(0.99, 1.0)  # sample 1% for quick evaluation
+        dataset_percentage=(0.9, 1.0)  # sample 10% for quick evaluation
     )
 
     dataloader = torch.utils.data.DataLoader(
@@ -33,7 +33,9 @@ def evaluate(args_dict, nets, stats, method):
 
     total_mse = 0.0
     total_distance = 0.0
-    total_samples = 0
+    total_first_action_distance = 0.0
+    total_samples = 0.0
+    total_actions = 0.0
 
     with torch.no_grad():
         with tqdm(dataloader, desc='Eval Batch', leave=False) as tepoch:
@@ -59,14 +61,20 @@ def evaluate(args_dict, nets, stats, method):
                     pred_action = nets['policy_net'](obs, torch.randn_like(true_action))
 
                 distances = torch.linalg.norm(pred_action - true_action, dim=2)
+                number_of_elements = torch.numel(distances)
                 mse = torch.mean((pred_action - true_action) ** 2).item()
-                total_mse += mse * obs.shape[0]
+                
+                total_mse += mse * distances.shape[0]
                 total_distance += distances.sum().item()
-                total_samples += obs.shape[0]
+                total_first_action_distance += distances[:, 0].sum().item()
+
+                total_samples += distances.shape[0]
+                total_actions += number_of_elements
 
                 tepoch.set_postfix(mse=mse)
 
     mean_mse = total_mse / total_samples
-    mean_distance = total_distance / total_samples
+    mean_distance = total_distance / total_actions
+    mean_first_action_distance = total_first_action_distance / total_samples
 
-    return mean_mse, mean_distance
+    return mean_mse, mean_distance, mean_first_action_distance

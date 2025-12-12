@@ -1,0 +1,2 @@
+scp -r -P 24 .\job-scripts dre3@cs-star2.cmpt.sfu.ca:/project/mars-lab/dre3/projects/imle_policy_980/
+scp -r -P 24 .\imle_policy\train.py .\imle_policy\__init__.py .\imle_policy\configs .\imle_policy\utils .\imle_policy\dataloaders .\imle_policy\evaluation .\imle_policy\models dre3@cs-star2.cmpt.sfu.ca:/project/mars-lab/dre3/projects/imle_policy_980/imle_policy/

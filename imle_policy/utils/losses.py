@@ -5,7 +5,7 @@ import wandb
 import pdb
 
 def rs_imle_loss(real_samples, fake_samples, epsilon=0.03):
-    B, T, D = real_samples.shape
+    B, S, D = real_samples.shape
     n_samples = fake_samples.shape[1]
 
     real_flat = real_samples.reshape(B, 1, -1)
@@ -22,5 +22,11 @@ def rs_imle_loss(real_samples, fake_samples, epsilon=0.03):
     else:
         loss = torch.tensor(0.0, device=real_samples.device)
 
-    wandb_log = ({"max_distance": distances.max().item(), "min_distance": distances.min().item(), "mean_distance": distances.mean().item(), "epsilon": epsilon, "loss": loss.item()})
+    wandb_log = {
+        "max_distance": distances.max().item(),
+        "min_distance": distances.min().item(),
+        "mean_distance": distances.mean().item(),
+        "epsilon": epsilon,
+        "loss": loss.item()
+    }
     return loss, wandb_log

@@ -48,12 +48,13 @@ def parse_args():
                       help='Use trajectory consistency')
     parser.add_argument('--wandb_run_name', type=str, default='testing',
                       help='Wandb run name')
+    parser.add_argument('--config', type=str, help='Config to load')
     return parser.parse_args()
 
-def load_config(task):
+def load_config(filename):
     # Get the directory where train_policy.py is located
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_file_path = os.path.join(current_dir, 'configs', f'{task}_config.json')
+    config_file_path = os.path.join(current_dir, 'configs', filename)
     
     if not os.path.exists(config_file_path):
         raise FileNotFoundError(f"Config file not found: {config_file_path}. Please make sure the config file exists in rs_imle_policy/configs/ directory.")
@@ -66,13 +67,17 @@ def setup_wandb(args_dict):
 
     if wandb.run.name is None: # if user does not login to wandb
         wandb.run.name = args_dict['wandb_run_name']
+
+    config_name: str = args_dict['config']
+    config_name = config_name.replace(".", "_")
+    print(f"Config Name: {config_name}")
     
     if args_dict['method'] == 'diffusion':
-        run_name = wandb.run.name + "_" + args_dict['method'] + f"_dataset_percentage_{args_dict['dataset_percentage']}_{args_dict['task']}"
+        run_name = wandb.run.name + "_" + args_dict['method'] + f"_dataset_percentage_{args_dict['dataset_percentage']}_{args_dict['task']}_{config_name}"
     elif args_dict['method'] == 'rs_imle':
-        run_name = wandb.run.name + "_" + args_dict['method'] + f"_eps_{args_dict['epsilon']}_;_n_samples_{args_dict['n_samples_per_condition']}__dataset_percentage_{args_dict['dataset_percentage']}_{args_dict['task']}"
+        run_name = wandb.run.name + "_" + args_dict['method'] + f"_eps_{args_dict['epsilon']}_;_n_samples_{args_dict['n_samples_per_condition']}__dataset_percentage_{args_dict['dataset_percentage']}_{args_dict['task']}_{config_name}"
     elif args_dict['method'] == 'flow_matching':
-        run_name = wandb.run.name + "_" + args_dict['method'] + f"_num_flow_iters_{args_dict['num_flow_iters']}_dataset_percentage_{args_dict['dataset_percentage']}_{args_dict['task']}"
+        run_name = wandb.run.name + "_" + args_dict['method'] + f"_num_flow_iters_{args_dict['num_flow_iters']}_dataset_percentage_{args_dict['dataset_percentage']}_{args_dict['task']}_{config_name}"
     
     wandb.run.name = run_name
     os.makedirs(f'saved_weights/{run_name}', exist_ok=True)
@@ -254,22 +259,22 @@ def train_flow_matching_step(nets, obs_cond, naction, B, args_dict, device):
 
     return nn.functional.mse_loss(pred, vector)
 
-def save_checkpoint(args_dict, nets, ema, epoch_idx, best_mean_success, stats, run_name, train_step, evaluate_fn):
+def save_checkpoint(args_dict, nets, ema, epoch_idx, best_mean_mse, stats, run_name, train_step, evaluate_fn):
     ema_nets = copy.deepcopy(nets)
     ema.copy_to(ema_nets.parameters())
 
-    # if (args_dict['task'] != 'pusht_real') and (args_dict['task'] != 'shoe_rack_real'):
-    #     mean_cov, mean_success = evaluate_fn(args_dict, ema_nets, stats, method=args_dict['method'])
+    if (args_dict['task'] != 'pusht_real') and (args_dict['task'] != 'shoe_rack_real'):
+        mean_mse, mean_distance, mean_first_action_distance = evaluate_fn(args_dict, nets, stats, method=args_dict['method'])
 
-    #     if mean_success > best_mean_success:
-    #         best_mean_success = mean_success
-    #         torch.save(nets.state_dict(), f'saved_weights/{run_name}/best_net_weights.pth')
-    #         torch.save(ema_nets.state_dict(), f'saved_weights/{run_name}/best_ema_net_weights.pth')
+        if mean_mse > best_mean_mse:
+            best_mean_mse = mean_mse
+            torch.save(nets.state_dict(), f'saved_weights/{run_name}/best_net_weights.pth')
+            torch.save(ema_nets.state_dict(), f'saved_weights/{run_name}/best_ema_net_weights.pth')
 
-    #     wandb.log({'mean_max_reward': mean_cov, 'mean_success_rate': mean_success}, step=train_step)
-    # else:
-    #     torch.save(nets.state_dict(), f'saved_weights/{run_name}/net_weights_{epoch_idx}.pth')
-    #     torch.save(ema_nets.state_dict(), f'saved_weights/{run_name}/ema_net_weights_{epoch_idx}.pth')
+        wandb.log({'eval_mean_mse': mean_mse, 'eval_mean_distance': mean_distance, 'eval_mean_first_action_distance': mean_first_action_distance}, step=train_step)
+    else:
+        torch.save(nets.state_dict(), f'saved_weights/{run_name}/net_weights_{epoch_idx}.pth')
+        torch.save(ema_nets.state_dict(), f'saved_weights/{run_name}/ema_net_weights_{epoch_idx}.pth')
     
     state = {}
     ema_state = {}
@@ -284,13 +289,12 @@ def save_checkpoint(args_dict, nets, ema, epoch_idx, best_mean_success, stats, r
     
     print("CHECKPOINT SAVED")
     
-    
-    return best_mean_success
+    return best_mean_mse
 
 def train(args_dict, nets, dataloader, device, noise_scheduler=None, stats=None, run_name=None, evaluate_fn=None, is_main=True):
     
     train_step = 0
-    best_mean_success = 0
+    best_mean_mse = 0
     
     scaler = torch.amp.GradScaler("cuda")
     
@@ -354,31 +358,37 @@ def train(args_dict, nets, dataloader, device, noise_scheduler=None, stats=None,
                         
                     train_step += 1
 
-                mean_mse, mean_distance = evaluate_fn(args_dict, nets, stats, method=args_dict['method'])
-                wandb.log({'eval_mean_mse': mean_mse, 'eval_mean_distance': mean_distance}, step=train_step)
-
-            if is_main and (epoch_idx == args_dict['num_epochs'] - 1):
-                best_mean_success = save_checkpoint(
-                    args_dict, nets, ema, epoch_idx, best_mean_success,
+            if is_main:
+                best_mean_mse = save_checkpoint(
+                    args_dict, nets, ema, epoch_idx, best_mean_mse,
                     stats, run_name, train_step, evaluate_fn
                 )
-            if is_main:
                 tglobal.set_postfix(loss=np.mean(epoch_loss))
 
 def main():
     args = parse_args()
     args_dict = vars(args)
-    
-    #DDP
-    dist.init_process_group(backend='nccl')
-    local_rank = int(os.environ["LOCAL_RANK"])
-    torch.cuda.set_device(local_rank)
-    device = torch.device(f"cuda:{local_rank}")
-    is_main = (dist.get_rank() == 0)
-    
+
+    if "LOCAL_RANK" in os.environ:
+        #DDP
+        print("Setting up DDP")
+        dist.init_process_group(backend='nccl')
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local_rank)
+        device = torch.device(f"cuda:{local_rank}")
+        is_main = (dist.get_rank() == 0)
+    else:
+        print("Running single node")
+        is_main = True
+        device = torch.device(f"cpu:0")
+
+    using_ddp = dist.is_initialized()
+
     # Load task-specific config
-    task_config = load_config(args.task)
+    task_config = load_config(args.config)
     args_dict.update(task_config)
+
+    print(f"Config Name: {args_dict['config']}")
     
     # Setup wandb
     if is_main:
@@ -402,7 +412,10 @@ def main():
         dataset_percentage=args_dict['dataset_percentage']
     )
     
-    sampler = DistributedSampler(dataset)
+    if using_ddp:
+        sampler = DistributedSampler(dataset)
+    else:
+        sampler = None
     
     dataloader = torch.utils.data.DataLoader(
         dataset,
@@ -427,13 +440,14 @@ def main():
     nets = nets.to(device)
     for k in nets:
         nets[k] = nets[k].to(device)
-        nets[k] = DDP(nets[k], device_ids=[local_rank], output_device=local_rank, find_unused_parameters=False)
-    
+        if using_ddp:
+            nets[k] = DDP(nets[k], device_ids=[local_rank], output_device=local_rank, find_unused_parameters=False)
+
     # Train
-    
     train(args_dict, nets, dataloader, device, noise_scheduler, stats, run_name if is_main else None, evaluate_fn, is_main=is_main)
     
-    dist.destroy_process_group()
+    if using_ddp:
+        dist.destroy_process_group()
 
 if __name__ == "__main__":
     main()
