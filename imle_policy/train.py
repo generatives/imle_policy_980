@@ -286,14 +286,23 @@ def save_checkpoint(args_dict, nets, ema, epoch_idx, best_mean_mse, stats, run_n
     ema.copy_to(ema_nets.parameters())
 
     if (args_dict['task'] != 'pusht_real') and (args_dict['task'] != 'shoe_rack_real'):
-        mean_mse, mean_distance, mean_first_action_distance = evaluate_fn(args_dict, nets, stats, method=args_dict['method'])
+        mean_mse, mean_distance, mean_first_action_distance, loss_max_distance, loss_min_distance, loss_mean_distance = evaluate_fn(args_dict, nets, stats, method=args_dict['method'])
 
         if mean_mse > best_mean_mse:
             best_mean_mse = mean_mse
             torch.save(nets.state_dict(), f'saved_weights/{run_name}/best_net_weights.pth')
             torch.save(ema_nets.state_dict(), f'saved_weights/{run_name}/best_ema_net_weights.pth')
 
-        wandb.log({'eval_mean_mse': mean_mse, 'eval_mean_distance': mean_distance, 'eval_mean_first_action_distance': mean_first_action_distance}, step=train_step)
+        wandb.log(
+            {
+                'eval_mean_mse': mean_mse,
+                'eval_mean_distance': mean_distance,
+                'eval_mean_first_action_distance': mean_first_action_distance,
+                'eval_loss_max_distance': loss_max_distance,
+                'eval_loss_min_distance': loss_min_distance,
+                'eval_loss_mean_distance': loss_mean_distance,
+            },
+            step=train_step)
     else:
         torch.save(nets.state_dict(), f'saved_weights/{run_name}/net_weights_{epoch_idx}.pth')
         torch.save(ema_nets.state_dict(), f'saved_weights/{run_name}/ema_net_weights_{epoch_idx}.pth')
