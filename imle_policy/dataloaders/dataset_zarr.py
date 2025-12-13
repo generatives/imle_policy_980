@@ -2,11 +2,12 @@ import torch
 from torch.utils.data import Dataset 
 import zarr 
 import numpy as np
+import os
 
 class PolicyDataset(Dataset):
     def __init__(self, dataset_path, pred_horizon=1, obs_horizon=1, action_horizon=1, dataset_percentage=1.0):
-        self.states = zarr.open(f"{dataset_path}/state", mode="r")
-        self.actions = zarr.open(f"{dataset_path}/action", mode="r")
+        self.states = zarr.open(os.path.join(dataset_path, "state"), mode="r")
+        self.actions = zarr.open(os.path.join(dataset_path, "action"), mode="r")
         
         if isinstance(dataset_percentage, tuple):
             start_frac, end_frac = dataset_percentage

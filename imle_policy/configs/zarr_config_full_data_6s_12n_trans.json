@@ -1,0 +1,19 @@
+{
+    "task": "zarr",
+    "method": "rs_imle",
+    "architecture": "transformer",
+    "dataset_path": "/project/mars-lab/dre3/datasets/recorded_data_5_skills_large.zarr/data",
+    "obs_dim": 45,
+    "action_dim": 12,
+    "num_epochs": 20,
+    "batch_size": 128,
+    "obs_horizon": 8,
+    "action_horizon": 8,
+    "pred_horizon": 8,
+    "num_cameras": 0,
+    "num_workers": 8,
+    "noise_dim": 12,
+    "n_samples_per_condition": 6,
+    "learning_rate": 1e-4,
+    "dataset_percentage": 0.9
+}

@@ -1,0 +1,22 @@
+{
+    "task": "zarr",
+    "method": "rs_imle",
+    "architecture": "transformer",
+    "dataset_path": "C:\\Users\\Decla\\Datasets\\recorded_data_5_skills_large.zarr\\data",
+    "obs_dim": 45,
+    "action_dim": 12,
+    "num_epochs": 10,
+    "batch_size": 128,
+    "obs_horizon": 8,
+    "action_horizon": 8,
+    "pred_horizon": 8,
+    "num_cameras": 0,
+    "num_diffusion_iters": 1000,
+    "num_workers": 8,
+    "n_samples_per_condition": 3,
+    "noise_dim": 12,
+    "learning_rate": 1e-4,
+    "use_amp": true,
+    "dataset_percentage": 0.0001,
+    "down_dims": [128,256,512]
+}

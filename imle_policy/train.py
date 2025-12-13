@@ -21,10 +21,10 @@ import time
 # Add the parent directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-#from imle_policy.models.rs_imle_network import GeneratorConditionalUnet1D
+from imle_policy.models.rs_imle_network import GeneratorConditionalUnet1D
 from imle_policy.models.rs_imle_network import GeneratorConditionalTransformer
 from imle_policy.models.diffusion_network import ConditionalUnet1D
-from imle_policy.models.vision_network import get_resnet, replace_bn_with_gn
+#from imle_policy.models.vision_network import get_resnet, replace_bn_with_gn
 from imle_policy.utils.losses import rs_imle_loss
 
 # Set up logging
@@ -131,19 +131,19 @@ def create_networks(args_dict):
             clip_sample=True,
             prediction_type='epsilon')
         
-    elif args_dict['method'] == 'rs_imle':
-        #policy_net = GeneratorConditionalUnet1D(
-        #    input_dim=args_dict['action_dim'],
-        #    global_cond_dim=args_dict['obs_dim']*args_dict['obs_horizon'],
-        #    down_dims=args_dict['down_dims'])
-        
+    elif args_dict['method'] == 'rs_imle' and args_dict['architecture'] == 'transformer':
+        print(args_dict)
         policy_net = GeneratorConditionalTransformer(
-            #input_dim=args_dict['action_dim'],
-            input_dim=360,
-            global_cond_dim=12,
-            output_dim=96
-            #global_cond_dim=args_dict['obs_dim']*args_dict['obs_horizon']
+            input_dim=args_dict['obs_dim'] * args_dict['obs_horizon'],
+            global_cond_dim=args_dict['noise_dim'],
+            output_dim=args_dict['action_dim'] * args_dict['pred_horizon']
             )
+        
+    elif args_dict['method'] == 'rs_imle' and args_dict['architecture'] == 'unet':
+        policy_net = GeneratorConditionalUnet1D(
+            input_dim=args_dict['action_dim'],
+            global_cond_dim=args_dict['obs_dim']*args_dict['obs_horizon'],
+            down_dims=args_dict['down_dims'])
         
     elif args_dict['method'] == 'flow_matching':
         policy_net = ConditionalUnet1D(
@@ -247,20 +247,24 @@ def train_diffusion_step(nets, noise_scheduler, obs_cond, naction, B, device):
 
     return nn.functional.mse_loss(noise_pred, noise)
 
-def train_rs_imle_step(nets, obs_cond, naction, B, args_dict, device):
-    #noise = torch.randn(B * args_dict['n_samples_per_condition'], *naction.shape[1:], device=device)
-    noise = torch.randn(B * args_dict['n_samples_per_condition'], 12, device=device)
-
+def train_rs_imle_transformer_step(nets, obs_cond, naction, B, args_dict, device):
+    noise = torch.randn(B * args_dict['n_samples_per_condition'], args_dict["noise_dim"], device=device)
     repeated_obs_cond = obs_cond.repeat_interleave(args_dict['n_samples_per_condition'], dim=0)
-    
     pred_actions = nets['policy_net'](repeated_obs_cond, noise)
     
+    output_size = naction.shape[1] * naction.shape[2]
+    pred_actions = pred_actions.reshape(B, args_dict['n_samples_per_condition'], output_size)
     
-    #pred_actions = pred_actions.reshape(B, args_dict['n_samples_per_condition'], *naction.shape[1:])
-    
-    pred_actions = pred_actions.reshape(B, args_dict['n_samples_per_condition'], 96)
+    # Compute IMLE loss
+    return rs_imle_loss(naction, pred_actions, args_dict['epsilon'])
 
+
+def train_rs_imle_unet_step(nets, obs_cond, naction, B, args_dict, device):
+    noise = torch.randn(B * args_dict['n_samples_per_condition'], *naction.shape[1:], device=device)
+    repeated_obs_cond = obs_cond.repeat_interleave(args_dict['n_samples_per_condition'], dim=0)
+    pred_actions = nets['policy_net'](repeated_obs_cond, noise)
     
+    pred_actions = pred_actions.reshape(B, args_dict['n_samples_per_condition'], *naction.shape[1:])
     
     # Compute IMLE loss
     return rs_imle_loss(naction, pred_actions, args_dict['epsilon'])
@@ -347,8 +351,12 @@ def train(args_dict, nets, dataloader, device, noise_scheduler=None, stats=None,
 
                     if args_dict['method'] == 'diffusion':
                         loss = train_diffusion_step(nets, noise_scheduler, obs_cond, naction, B, device)
-                    elif args_dict['method'] == 'rs_imle':
-                        loss, loss_logs = train_rs_imle_step(nets, obs_cond, naction, B, args_dict, device)
+                    elif args_dict['method'] == 'rs_imle' and args_dict['architecture'] == 'transformer':
+                        loss, loss_logs = train_rs_imle_transformer_step(nets, obs_cond, naction, B, args_dict, device)
+                        if is_main:
+                            wandb.log(loss_logs, step=train_step)
+                    elif args_dict['method'] == 'rs_imle' and args_dict['architecture'] == 'unet':
+                        loss, loss_logs = train_rs_imle_unet_step(nets, obs_cond, naction, B, args_dict, device)
                         if is_main:
                             wandb.log(loss_logs, step=train_step)
                     elif args_dict['method'] == 'flow_matching':

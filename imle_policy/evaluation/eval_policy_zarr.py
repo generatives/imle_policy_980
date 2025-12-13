@@ -40,22 +40,20 @@ def evaluate(args_dict, nets, stats, method):
     with torch.no_grad():
         with tqdm(dataloader, desc='Eval Batch', leave=False) as tepoch:
             for batch in tepoch:
+
                 obs = batch['obs'].to(device)
                 B, H, D = obs.shape
                 
                 obs = obs.reshape(B, H * D)
-                target_dim = nets['policy_net'].module.global_cond_dim
-                if obs.shape[1] != target_dim:
-                    assert target_dim % obs.shape[1] == 0, (
-                        f"Cannot Expand obs {obs.shape[1]} -> {target_dim}"
-                    )
-                    factor = target_dim // obs.shape[1]
-                    obs = obs.repeat(1, factor)
                 true_action = batch['action'].to(device)
 
-                if method == 'rs_imle':
+                if method == 'rs_imle' and args_dict["architecture"] == "unet":
                     noise = torch.randn(obs.shape[0], *true_action.shape[1:], device=device)
                     pred_action = nets['policy_net'](obs, noise)
+                elif method == 'rs_imle' and args_dict["architecture"] == "transformer":
+                    noise = torch.randn(obs.shape[0], args_dict["noise_dim"], device=device)
+                    pred_action = nets['policy_net'](obs, noise)
+                    pred_action = pred_action.reshape(obs.shape[0], args_dict["pred_horizon"], args_dict["action_dim"])
                 else:
                     # for diffusion or other methods, fallback to using obs as input
                     pred_action = nets['policy_net'](obs, torch.randn_like(true_action))

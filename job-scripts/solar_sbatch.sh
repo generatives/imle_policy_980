@@ -1,6 +1,5 @@
 #!/bin/bash
-#SBATCH --ntasks=3
-#SBATCH --ntasks-per-node=1
+#SBATCH --ntasks=5
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus-per-task=2
 #SBATCH --job-name=imle-train
@@ -15,11 +14,11 @@
 LOGDIR=/project/mars-lab/dre3/projects/imle_policy_980/logs
 
 configs=(
-  zarr_config_full_data_3_large_model.json
-  zarr_config_full_data_3_medium_model.json
-  zarr_config_full_data_3_small_model.json
-  zarr_config_full_data_6_medium_model.json
-  zarr_config_full_data_9_medium_model.json
+  zarr_config_small_data_3s_12n_trans.json
+  zarr_config_full_data_3s_12n_trans.json
+  zarr_config_full_data_3s_36n_trans.json
+  zarr_config_full_data_6s_12n_trans.json
+  zarr_config_full_data_9s_12n_trans.json
 )
 
 for cfg in "${configs[@]}"; do
